@@ -191,6 +191,46 @@ class Database:
             'app_breakdown': app_breakdown
         }
     
+    def update_app_time_for_project(self, project_id: int, app_name: str, new_duration: float):
+        """
+        Update total time for an app in a project
+        This proportionally adjusts all sessions for that app
+        
+        :param project_id: Project ID
+        :param app_name: Application name
+        :param new_duration: New total duration in seconds
+        """
+        # Get current total for this app
+        self.cursor.execute(
+            '''
+            SELECT SUM(duration) as current_total
+            FROM time_sessions
+            WHERE project_id = ? AND app_name = ?
+            ''',
+            (project_id, app_name)
+        )
+        
+        result = self.cursor.fetchone()
+        current_total = result['current_total'] if result and result['current_total'] else 0
+        
+        if current_total == 0:
+            return  # Nothing to update
+        
+        # Calculate scaling factor
+        scale_factor = new_duration / current_total
+        
+        # Update all sessions proportionally
+        self.cursor.execute(
+            '''
+            UPDATE time_sessions
+            SET duration = duration * ?
+            WHERE project_id = ? AND app_name = ?
+            ''',
+            (scale_factor, project_id, app_name)
+        )
+        
+        self.conn.commit()
+    
     def close(self):
         """
         Close database connection
