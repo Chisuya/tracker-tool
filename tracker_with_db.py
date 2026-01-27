@@ -118,18 +118,35 @@ class ProjectTimeTracker:
         if time_data['total_seconds'] == 0:
             summary += "No time tracked yet!\n"
         else:
-            summary += f"Total Time: {time_data['total_hours']:.2f} hours\n"
+            # formatting total time
+            total_seconds = time_data['total_seconds']
+            hours = int(total_seconds // 3600)
+            minutes = int((total_seconds % 3600) // 60)
+            seconds = int(total_seconds % 60)
+
+            # showing appropriate units
+            if hours > 0:
+                summary += f"Total Time: {hours}h {minutes}m\n"
+            elif minutes > 0:
+                summary += f"Total Time: {minutes}m {seconds}s\n"
+            else:
+                summary += f"Total Time: {seconds}s\n"
+            
             summary += "\nBreakdown by Application:\n"
             summary += "-"*60 + "\n"
             
             for app in time_data['app_breakdown']:
-                app_minutes = app['duration'] / 60
-                app_hours = app_minutes / 60
+                app_seconds = app['duration']
+                app_hours = int(app_seconds // 3600)
+                app_minutes = int((app_seconds % 3600) // 60)
+                app_secs = int(app_seconds % 60)
                 
-                if app_hours >= 1:
-                    summary += f"  {app['app_name']:30s} {app_hours:6.2f} hours\n"
+                if app_hours > 0:
+                    summary += f"  {app['app_name']:30s} {app_hours}h {app_minutes}m\n"
+                elif app_minutes > 0:
+                    summary += f"  {app['app_name']:30s} {app_minutes}m {app_secs}s\n"
                 else:
-                    summary += f"  {app['app_name']:30s} {app_minutes:6.2f} minutes\n"
+                    summary += f"  {app['app_name']:30s} {app_secs}s\n"
         
         summary += "="*60 + "\n"
         return summary
