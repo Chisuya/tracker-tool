@@ -126,6 +126,23 @@ def main():
     """
     Loop - checks for active window every 2 seconds
     """
+    import argparse
+
+    # Parse cli args
+    parser = argparse.ArgumentParser(description='Art Time Tracker')
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
+    args = parser.parse_args()
+
+    # Logging levels based on args
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        print("Debug mode enabled")
+    elif args.verbose:
+        logging.getLogger().setLevel(logging.INFO)
+
+    # ^To use above: do python app_tracker.py --debug or --verbose
+
     print("Starting application tracker...")
     print("Switch between applications to see the tracker in action!!")
     print("Press Ctrl+C to stop\n")
@@ -138,7 +155,7 @@ def main():
             if active_app:
                 tracker.update(active_app)
 
-        time.sleep(2)
+            time.sleep(2)
     except KeyboardInterrupt:
         print("\n\nStopping tracker...")
         print(tracker.get_report())
