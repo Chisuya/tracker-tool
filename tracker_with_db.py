@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from database import Database
 from calendar_sync import CalendarSync
+import pyautogui
 
 import logging
 
@@ -84,16 +85,61 @@ class ProjectTimeTracker:
             logging.warning("Calendar sync disabled (authentication failed)")
             self.calendar_sync = None
 
+        # NEW idle tracking
+        self.last_activity_time = datetime.now()
+        self.idle_threshold = 300 # 5 mins
+        self.is_idle = False
+        self.last_mouse_position = pyautogui.position()
+
+    def check_idle(self):
+        """
+        Check if user is idle (no mouse/keyboard activity)
+        Returns True if idle, False if active
+        
+        :param self: -
+        """
+        current_mouse_position = pyautogui.position()
+
+        # Check if mouse has moved
+        if current_mouse_position != self.last_mouse_position:
+            self.last_mouse_position = current_mouse_position
+            self.last_activity_time = datetime.now()
+            return False
+        
+        # Calculate time since last activity
+        time_since_activity = (datetime.now() - self.last_activity_time).total_seconds()
+
+        # If idle > threshold, mark as idle
+        if time_since_activity >= self.idle_threshold:
+            return True
+        
+        return False
+
     # NEW modified for DB
     def update(self, app_name):
         now = datetime.now()
-
-        if app_name != self.current_app:
+        
+        # Check for idle
+        is_currently_idle = self.check_idle()
+        
+        # Determine what we're tracking
+        if is_currently_idle:
+            tracking_name = "Idle"
+        else:
+            tracking_name = app_name
+            # Reset idle flag if we were idle but now active
+            if self.is_idle:
+                self.is_idle = False
+                logging.info("User is active again!")
+        
+        # If tracking name changed (switched apps or went idle/active)
+        if tracking_name != self.current_app:
             if self.current_app and self.session_start:
                 session_duration = (now - self.session_start).total_seconds()
 
                 if session_duration >= self.threshold:
-                    # create cal event
+                    # Create calendar event first
+                    calendar_event_id = None
                     if self.calendar_sync:
                         session_data = {
                             'project_name': self.project['name'],
@@ -103,20 +149,23 @@ class ProjectTimeTracker:
                             'duration_seconds': session_duration
                         }
                         calendar_event_id = self.calendar_sync.create_event_from_session(session_data)
-                    # change to safe to database
+                    
+                    # Save to database with calendar event ID
                     self.db.add_time_session(
                         project_id = self.project_id,
                         app_name = self.current_app,
                         start_time = self.session_start,
                         end_time = now,
-                        duration = session_duration
+                        duration = session_duration,
+                        calendar_event_id = calendar_event_id
                     )
 
                     # update logging msg
                     logging.info(
                         f"Saved {session_duration:.1f}s in {self.current_app}"
-                        f" to project '{self.project['name']}"
+                        f" to project '{self.project['name']}'"
                     )
+                    
                     # notify callback (in bg thread)
                     if self.on_session_saved:
                         self.on_session_saved(self.project_id, self.current_app, session_duration)
@@ -124,8 +173,13 @@ class ProjectTimeTracker:
                     # Log to ignore if less than threshold
                     logging.info(f"Ignored {session_duration:.1f}s...")
                 
-            self.current_app = app_name
+            self.current_app = tracking_name
             self.session_start = now
+            
+            # Mark if we just went idle
+            if is_currently_idle and not self.is_idle:
+                self.is_idle = True
+                logging.info("User went idle (5 min no activity)")
 
     def get_summary(self):
         """

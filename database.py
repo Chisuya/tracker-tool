@@ -126,6 +126,20 @@ class Database:
         )
         self.conn.commit()
 
+    def update_project_name(self, project_id: int, name: str):
+        """
+        Update project name
+        
+        :param self: -
+        :param project_id: Project ID
+        :param name: New project name
+        """
+        self.cursor.execute(
+            'UPDATE projects SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            (name, project_id)
+        )
+        self.conn.commit()
+
     def add_time_session(self, project_id: int, app_name: str, start_time: datetime, end_time: datetime, duration: float, calendar_event_id: str = None):
         """
         Add a time session to a proj

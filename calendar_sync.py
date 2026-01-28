@@ -186,12 +186,16 @@ class CalendarSync:
                 'PureRef.exe': '4', # flamingo
                 'chrome.exe': '10', # basil
                 'code.exe': '1', # lavender
+                'Idle': '8', # graphite
             }
             color_id = app_colors.get(session_data['app_name'], '8') # default to graphite
 
             # Create event
+            emoji = "💤" if session_data['app_name'] == 'Idle' else "🎨"
+            app_display = session_data['app_name'].replace('.exe', '')
             event = {
-                'summary': f"🎨 {session_data['project_name']} - {session_data['app_name']}",
+                # Clean up app name for display
+                'summary': f"{emoji} {session_data['project_name']} - {app_display}",
                 'description': f"Art time tracked in {session_data['app_name']}\n"
                               f"Duration: {duration_minutes:.1f} minutes",
                 'start': {
@@ -202,6 +206,7 @@ class CalendarSync:
                     'dateTime': end_time.isoformat(),
                     'timeZone': config.get_timezone(),
                 },
+                'colorId': color_id,
             }
             
             # Insert event

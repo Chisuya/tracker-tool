@@ -754,9 +754,31 @@ class ProjectSelectionWindow:
         )
         time_label.pack(anchor="w", pady=5)
         
-        # View button (right side)
-        view_btn = ctk.CTkButton(
+        # Button container (right side)
+        button_container = ctk.CTkFrame(
             card,
+            fg_color="transparent"
+        )
+        button_container.pack(side="right", padx=15, pady=10)
+
+        # Edit button
+        edit_btn = ctk.CTkButton(
+            button_container,
+            text="✏️",
+            command=lambda p=project: self.edit_project(p['id'], p['name']),
+            width=35,
+            height=35,
+            corner_radius=10,
+            fg_color=self.colors['accent'],
+            hover_color=self.colors['button_hover'],
+            font=("Arial", 14),
+            text_color="white"
+        )
+        edit_btn.pack(side="left", padx=5)
+
+        # View button
+        view_btn = ctk.CTkButton(
+            button_container,
             text="📊 View Report",
             command=lambda p=project: self.open_report(p['id']),
             width=140,
@@ -767,7 +789,7 @@ class ProjectSelectionWindow:
             font=("Arial Rounded MT Bold", 14),
             text_color="white"
         )
-        view_btn.pack(side="right", padx=15, pady=10)
+        view_btn.pack(side="left", padx=5)
     
     def open_report(self, project_id):
         """Open report for selected project"""
@@ -775,6 +797,29 @@ class ProjectSelectionWindow:
         # delay so window is created, then at top
         self.window.after(100, lambda: report.window.lift())
         self.window.after(100, lambda: report.window.focus_force())
+
+    def edit_project(self, project_id, current_name):
+        """Edit project name"""
+        dialog = ctk.CTkInputDialog(
+            text=f"Edit project name:\n(Current: {current_name})",
+            title="✏️ Edit Project"
+        )
+        new_name = dialog.get_input()
+        
+        if new_name and new_name.strip() and new_name.strip() != current_name:
+            # Update in database
+            self.db.update_project_name(project_id, new_name.strip())
+            
+            # Update main GUI dropdown if it exists
+            if self.gui:
+                self.gui.project_dropdown.configure(values=self.gui.get_project_names())
+            
+            messagebox.showinfo("Success! ✨", f"Project renamed to: {new_name.strip()}")
+            
+            # Refresh this window to show new name
+            for widget in self.window.winfo_children():
+                widget.destroy()
+            self.create_ui()
 
 class SettingsWindow:
     """Settings window for configuring the app"""
