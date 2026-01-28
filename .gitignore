@@ -1,5 +1,7 @@
 # Python
 __pycache__/
+*.pyc
+*.pyo
 *.py[cod]
 *$py.class
 *.so
@@ -17,3 +19,13 @@ Thumbs.db
 # Database files (we'll create these later)
 *.db
 *.sqlite
+
+# Google OAuth creds
+credentials.json
+token.pickle
+
+# Personal config settings file
+tracker_settings.json
+
+# Database (personal data)
+time_tracker.db
