@@ -8,6 +8,18 @@ from tracker_with_db import get_active_window_info, ProjectTimeTracker
 from icon_helper import get_app_icon, get_default_icon
 import config
 
+import os
+import sys
+
+if getattr(sys, 'frozen', False):
+    # Get run script
+    SCRIPT_DIR = sys._MEIPASS
+else:
+    # Run as .py script
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+ICON_PATH = os.path.join(SCRIPT_DIR, "tracker_icon.ico")
+
 # Set appearance
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -18,6 +30,13 @@ class TimeTrackerGUI:
         self.window = ctk.CTk()
         self.window.title("✨Time Tracker ✨")
         self.window.geometry("500x600")
+
+        # icon
+        if os.path.exists(ICON_PATH):
+            try:
+                self.window.wm_iconbitmap(ICON_PATH)
+            except:
+                pass
 
         # Center window
         self.window.update_idletasks() # update window info

@@ -187,6 +187,7 @@ class CalendarSync:
                 'chrome.exe': '10', # basil
                 'code.exe': '1', # lavender
                 'Idle': '8', # graphite
+                'Genshin.exe': '5' # banana
             }
             color_id = app_colors.get(session_data['app_name'], '8') # default to graphite
 
@@ -195,7 +196,8 @@ class CalendarSync:
             app_display = session_data['app_name'].replace('.exe', '')
             event = {
                 # Clean up app name for display
-                'summary': f"{emoji} {session_data['project_name']} - {app_display}",
+                'summary': f"{emoji} {app_display}",
+                'location': session_data['project_name'],
                 'description': f"Art time tracked in {session_data['app_name']}\n"
                               f"Duration: {duration_minutes:.1f} minutes",
                 'start': {
