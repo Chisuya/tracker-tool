@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from database import Database
 from tracker_with_db import get_active_window_info, ProjectTimeTracker
 from icon_helper import get_app_icon, get_default_icon
+import config
 
 # Set appearance
 ctk.set_appearance_mode("light")
@@ -17,6 +18,14 @@ class TimeTrackerGUI:
         self.window = ctk.CTk()
         self.window.title("✨Time Tracker ✨")
         self.window.geometry("500x600")
+
+        # Center window
+        self.window.update_idletasks() # update window info
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+        x = (screen_width - 500) // 2 + 400 # center horizontally + 400 to right
+        y = (screen_height - 600) // 2 # center vertically
+        self.window.geometry(f"500x600+{x}+{y}")
         
         # Color palette
         self.colors = {
@@ -38,10 +47,12 @@ class TimeTrackerGUI:
         self.current_project_id = None
         self.elapsed_seconds = 0
         
+        self.active_reports = []  # Track open report windows
+
         self.create_ui()
         
     def create_ui(self):
-        """Create the dreamy UI"""
+        """Create the UI"""
         
         # Title with emoji
         title = ctk.CTkLabel(
@@ -146,12 +157,19 @@ class TimeTrackerGUI:
         )
         self.status_label.pack(pady=10)
         
+        # Button container frame
+        button_frame = ctk.CTkFrame(
+            self.window,
+            fg_color="transparent"
+        )
+        button_frame.pack(pady=10)
+
         # View report button
         report_btn = ctk.CTkButton(
-            self.window,
+            button_frame,
             text="📊 View Report",
             command=self.show_report,
-            width=200,
+            width=180,
             height=40,
             corner_radius=20,
             fg_color=self.colors['accent'],
@@ -159,8 +177,23 @@ class TimeTrackerGUI:
             font=("Arial Rounded MT Bold", 14),
             text_color="white"
         )
-        report_btn.pack(pady=10)
-    
+        report_btn.pack(side="left", padx=5)
+
+        # Settings button
+        settings_btn = ctk.CTkButton(
+            button_frame,
+            text="⚙️ Settings",
+            command=self.show_settings,
+            width=180,
+            height=40,
+            corner_radius=20,
+            fg_color=self.colors['accent'],
+            hover_color=self.colors['button_hover'],
+            font=("Arial Rounded MT Bold", 14),
+            text_color="white"
+        )
+        settings_btn.pack(side="left", padx=5)
+
     def get_project_names(self):
         """Get list of project names for dropdown"""
         projects = self.db.get_all_projects()
@@ -205,8 +238,13 @@ class TimeTrackerGUI:
             return
         
         self.current_project_id = project['id']
-        self.tracker = ProjectTimeTracker(self.db, self.current_project_id, threshold_seconds=30)
-        
+        self.tracker = ProjectTimeTracker(
+        self.db, 
+        self.current_project_id, 
+        threshold_seconds=30,
+        on_session_saved=self.on_session_saved
+        )
+
         self.is_tracking = True
         self.elapsed_seconds = 0
         self.track_button.configure(text="⏹ Stop Tracking", fg_color="#FF6B9D")
@@ -228,6 +266,25 @@ class TimeTrackerGUI:
         
         messagebox.showinfo("Stopped", "Time tracking stopped! Your data has been saved 💾")
     
+    def on_session_saved(self, project_id, app_name, duration):
+        """Called when session saved (from background thread!)"""
+        self.window.after(0, self._notify_reports, project_id)
+    
+    def _notify_reports(self, project_id):
+        """Notify report windows (runs in main thread)"""
+        # Clean up closed windows
+        self.active_reports = [r for r in self.active_reports if r.window.winfo_exists()]
+        
+        # Notify matching reports
+        for report in self.active_reports:
+            if report.project_id == project_id:
+                report.trigger_refresh()
+    
+    def register_report(self, report_window):
+        """Register a report window to receive updates"""
+        self.active_reports.append(report_window)
+
+
     def tracking_loop(self):
         """Background tracking loop"""
         while self.is_tracking:
@@ -252,7 +309,17 @@ class TimeTrackerGUI:
     
     def show_report(self):
         """Show proj selection for reports"""
-        ProjectSelectionWindow(self.db, self.colors)
+        selection = ProjectSelectionWindow(self.db, self.colors, gui=self)
+        # delay so new window will be on top
+        self.window.after(100, lambda: selection.window.lift())
+        self.window.after(100, lambda: selection.window.focus_force())
+
+    def show_settings(self):
+        """Show settings window"""
+        settings_window = SettingsWindow(self.colors, gui=self)
+        # Small delay to ensure window stays on top
+        self.window.after(100, lambda: settings_window.window.lift())
+        self.window.after(100, lambda: settings_window.window.focus_force())
     
     def run(self):
         """Run the GUI"""
@@ -272,27 +339,39 @@ class TimeTrackerGUI:
 
 
 class ReportWindow:
-    """Beautiful report window with editable table"""
+    """report window with editable table"""
     
-    def __init__(self, db, project_id, colors):
+    def __init__(self, db, project_id, colors, gui = None):
         self.db = db
         self.project_id = project_id
         self.colors = colors
+        self.gui = gui
         
         self.window = ctk.CTkToplevel()
         self.window.title("📊 Time Report")
         self.window.geometry("700x600")
+
+        if self.gui and self.gui.window.winfo_exists():
+            parent_x = self.gui.window.winfo_x()
+            parent_y = self.gui.window.winfo_y()
+            self.window.geometry(f"+{parent_x + 50}+{parent_y + 50}")
         self.window.configure(fg_color=colors['bg'])
 
         # Make window come to front
         self.window.lift()              # Bring to front
         self.window.focus_force()       # Force focus
-        self.window.grab_set()          # Make it modal (blocks parent until closed)
+        # self.window.grab_set()          # Make it modal (blocks parent until closed)
         
         self.project = db.get_project(project_id)
         self.time_data = db.get_project_time(project_id)
+
+        self.needs_refresh = False
         
         self.create_ui()
+
+        # Register with main GUI
+        if self.gui:
+            self.gui.register_report(self)
     
     def create_ui(self):
         """Create the report UI"""
@@ -456,6 +535,31 @@ class ReportWindow:
         )
         close_btn.pack(pady=10)
     
+    def trigger_refresh(self):
+        """Called when new data saved (safe - main thread)"""
+        if not self.needs_refresh:
+            self.needs_refresh = True
+            self.window.after(500, self.do_refresh)
+    
+    def do_refresh(self):
+        """Actually refresh the display"""
+        if not self.window.winfo_exists():
+            return
+        
+        self.needs_refresh = False
+        
+        # Get fresh data
+        self.time_data = self.db.get_project_time(self.project_id)
+        self.project = self.db.get_project(self.project_id)
+        
+        # Clear and rebuild
+        for widget in self.window.winfo_children():
+            widget.destroy()
+        
+        self.create_ui()
+        
+        print(f"✨ Report refreshed!")
+    
     def save_time_edit(self, entry, app_data):
         """Save edited time to database"""
         try:
@@ -502,19 +606,27 @@ class ReportWindow:
 class ProjectSelectionWindow:
     """Window to select which project to view report for"""
     
-    def __init__(self, db, colors):
+    def __init__(self, db, colors, gui = None):
         self.db = db
         self.colors = colors
+        self.gui = gui
         
         self.window = ctk.CTkToplevel()
         self.window.title("📊 Select Project")
         self.window.geometry("500x600")
+
+        # Position relative to parent window
+        if self.gui and self.gui.window.winfo_exists():
+            parent_x = self.gui.window.winfo_x()
+            parent_y = self.gui.window.winfo_y()
+            self.window.geometry(f"+{parent_x + 50}+{parent_y + 50}")
+
         self.window.configure(fg_color=colors['bg'])
         
          # Make window come to front
         self.window.lift()
         self.window.focus_force()
-        self.window.grab_set()  # Modal - must close this before using parent
+        # self.window.grab_set()  # Modal - must close this before using parent
 
         self.create_ui()
     
@@ -659,7 +771,171 @@ class ProjectSelectionWindow:
     
     def open_report(self, project_id):
         """Open report for selected project"""
-        ReportWindow(self.db, project_id, self.colors)
+        report = ReportWindow(self.db, project_id, self.colors, gui = self.gui)
+        # delay so window is created, then at top
+        self.window.after(100, lambda: report.window.lift())
+        self.window.after(100, lambda: report.window.focus_force())
+
+class SettingsWindow:
+    """Settings window for configuring the app"""
+    
+    def __init__(self, colors, gui=None):
+        self.colors = colors
+        self.gui = gui
+        
+        self.window = ctk.CTkToplevel()
+        self.window.title("⚙️ Settings")
+        self.window.geometry("500x400")
+        
+        # Position relative to parent
+        if self.gui and self.gui.window.winfo_exists():
+            parent_x = self.gui.window.winfo_x()
+            parent_y = self.gui.window.winfo_y()
+            self.window.geometry(f"+{parent_x + 50}+{parent_y + 50}")
+        
+        self.window.configure(fg_color=colors['bg'])
+        
+        # Make window come to front
+        self.window.lift()
+        self.window.focus_force()
+        
+        self.create_ui()
+    
+    def create_ui(self):
+        """Create the settings UI"""
+        
+        # Header
+        title = ctk.CTkLabel(
+            self.window,
+            text="⚙️ Settings",
+            font=("Arial Rounded MT Bold", 28),
+            text_color=self.colors['text']
+        )
+        title.pack(pady=20)
+        
+        # Settings frame
+        settings_frame = ctk.CTkFrame(
+            self.window,
+            fg_color=self.colors['card'],
+            corner_radius=15,
+            border_width=2,
+            border_color=self.colors['accent']
+        )
+        settings_frame.pack(pady=10, padx=30, fill="both", expand=True)
+        
+        # Timezone setting
+        timezone_label = ctk.CTkLabel(
+            settings_frame,
+            text="🌍 Timezone",
+            font=("Arial Rounded MT Bold", 18),
+            text_color=self.colors['text']
+        )
+        timezone_label.pack(pady=(20, 10))
+        
+        timezone_info = ctk.CTkLabel(
+            settings_frame,
+            text="This affects Google Calendar event times",
+            font=("Arial", 12),
+            text_color=self.colors['text']
+        )
+        timezone_info.pack(pady=(0, 10))
+        
+        # Timezone dropdown
+        timezones = [
+            'America/Los_Angeles',  # Pacific
+            'America/Denver',       # Mountain
+            'America/Chicago',      # Central
+            'America/New_York',     # Eastern
+            'Europe/London',        # UK
+            'Europe/Paris',         # Central Europe
+            'Europe/Berlin',        # Germany
+            'Asia/Tokyo',           # Japan
+            'Asia/Shanghai',        # China
+            'Australia/Sydney',     # Australia
+        ]
+        
+        # Friendly names
+        timezone_display = {
+            'America/Los_Angeles': 'Pacific Time (PT) - Los Angeles',
+            'America/Denver': 'Mountain Time (MT) - Denver',
+            'America/Chicago': 'Central Time (CT) - Chicago',
+            'America/New_York': 'Eastern Time (ET) - New York',
+            'Europe/London': 'GMT/BST - London',
+            'Europe/Paris': 'CET/CEST - Paris',
+            'Europe/Berlin': 'CET/CEST - Berlin',
+            'Asia/Tokyo': 'JST - Tokyo',
+            'Asia/Shanghai': 'CST - Shanghai',
+            'Australia/Sydney': 'AEST/AEDT - Sydney',
+        }
+        
+        # Get current timezone
+        current_tz = config.get_timezone()
+        current_display = timezone_display.get(current_tz, current_tz)
+        
+        self.timezone_var = ctk.StringVar(value=current_display)
+        timezone_dropdown = ctk.CTkComboBox(
+            settings_frame,
+            variable=self.timezone_var,
+            values=[timezone_display[tz] for tz in timezones],
+            width=400,
+            height=40,
+            corner_radius=15,
+            border_width=2,
+            border_color=self.colors['accent'],
+            button_color=self.colors['accent'],
+            button_hover_color=self.colors['button_hover'],
+            dropdown_hover_color=self.colors['button_hover'],
+            font=("Arial", 14)
+        )
+        timezone_dropdown.pack(pady=10)
+        
+        # Store the mapping for saving
+        self.display_to_tz = {v: k for k, v in timezone_display.items()}
+        
+        # Save button
+        save_btn = ctk.CTkButton(
+            settings_frame,
+            text="💾 Save Settings",
+            command=self.save_settings,
+            width=200,
+            height=45,
+            corner_radius=20,
+            fg_color=self.colors['button_active'],
+            hover_color=self.colors['button_hover'],
+            font=("Arial Rounded MT Bold", 16),
+            text_color="white"
+        )
+        save_btn.pack(pady=30)
+        
+        # Close button
+        close_btn = ctk.CTkButton(
+            self.window,
+            text="✨ Close",
+            command=self.window.destroy,
+            width=200,
+            height=40,
+            corner_radius=20,
+            fg_color=self.colors['accent'],
+            hover_color=self.colors['button_hover'],
+            font=("Arial Rounded MT Bold", 14),
+            text_color="white"
+        )
+        close_btn.pack(pady=10)
+    
+    def save_settings(self):
+        """Save settings to config"""
+        # Convert display name back to timezone ID
+        display_name = self.timezone_var.get()
+        timezone_id = self.display_to_tz.get(display_name)
+        
+        if timezone_id:
+            config.set_timezone(timezone_id)
+            messagebox.showinfo(
+                "Saved! ✨",
+                f"Timezone updated to {display_name}\n\nNew calendar events will use this timezone!"
+            )
+        else:
+            messagebox.showerror("Error", "Invalid timezone selected")
 
 if __name__ == "__main__":
     app = TimeTrackerGUI()

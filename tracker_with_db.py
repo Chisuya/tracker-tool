@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timedelta
 from collections import defaultdict
 from database import Database
+from calendar_sync import CalendarSync
 
 import logging
 
@@ -52,18 +53,21 @@ def get_active_window_info():
         # UNEXPECTED!!!! needs fixing
         logging.error(f"Unexpected error getting window: {e}")
         return None
+
 class ProjectTimeTracker:
     """
     Time tracker, saves sessions to db
     """
     # NEW but similar to old TimeTracker
-    def __init__(self, db: Database, project_id: int, threshold_seconds = 30):
+    def __init__(self, db: Database, project_id: int, threshold_seconds = 30, on_session_saved=None):
         # storing in database instead of memory
         self.db = db
         self.project_id = project_id
         self.threshold = threshold_seconds
         self.current_app = None
         self.session_start = None
+        # callback func
+        self.on_session_saved = on_session_saved
 
         # get proj info from database
         self.project = db.get_project(project_id)
@@ -71,6 +75,14 @@ class ProjectTimeTracker:
             raise ValueError(f"Projecct {project_id} not found!")
         
         logging.info(f"Tracking time for: {self.project['name']}")
+
+        # initialize calendar sync
+        self.calendar_sync = CalendarSync()
+        if self.calendar_sync.authenticate():
+            logging.info("Calendar sync enabled")
+        else:
+            logging.warning("Calendar sync disabled (authentication failed)")
+            self.calendar_sync = None
 
     # NEW modified for DB
     def update(self, app_name):
@@ -81,6 +93,16 @@ class ProjectTimeTracker:
                 session_duration = (now - self.session_start).total_seconds()
 
                 if session_duration >= self.threshold:
+                    # create cal event
+                    if self.calendar_sync:
+                        session_data = {
+                            'project_name': self.project['name'],
+                            'app_name': self.current_app,
+                            'start_time': self.session_start,
+                            'end_time': now,
+                            'duration_seconds': session_duration
+                        }
+                        calendar_event_id = self.calendar_sync.create_event_from_session(session_data)
                     # change to safe to database
                     self.db.add_time_session(
                         project_id = self.project_id,
@@ -95,6 +117,9 @@ class ProjectTimeTracker:
                         f"Saved {session_duration:.1f}s in {self.current_app}"
                         f" to project '{self.project['name']}"
                     )
+                    # notify callback (in bg thread)
+                    if self.on_session_saved:
+                        self.on_session_saved(self.project_id, self.current_app, session_duration)
                 else:
                     # Log to ignore if less than threshold
                     logging.info(f"Ignored {session_duration:.1f}s...")

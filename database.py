@@ -25,7 +25,7 @@ class Database:
         
         :param self: -
         """
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, check_same_thread = False)
         self.conn.row_factory = sqlite3.Row # allow access columns by name instead of row[0]
         self.cursor = self.conn.cursor()
 
@@ -58,6 +58,7 @@ class Database:
                 start_time TIMESTAMP NOT NULL,
                 end_time TIMESTAMP NOT NULL,
                 duration REAL NOT NULL,
+                calendar_event_id TEXT,
                 FOREIGN KEY (project_id) REFERENCES projects (id)
             )
         ''')
@@ -125,7 +126,7 @@ class Database:
         )
         self.conn.commit()
 
-    def add_time_session(self, project_id: int, app_name: str, start_time: datetime, end_time: datetime, duration: float):
+    def add_time_session(self, project_id: int, app_name: str, start_time: datetime, end_time: datetime, duration: float, calendar_event_id: str = None):
         """
         Add a time session to a proj
         
@@ -140,13 +141,15 @@ class Database:
 
         :param duration: Duration in seconds
 
+        :param calendar_event_id: Google calendar event ID (not req)
+
         """
         self.cursor.execute(
             '''
-            INSERT INTO time_sessions (project_id, app_name, start_time, end_time, duration)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO time_sessions (project_id, app_name, start_time, end_time, duration, calendar_event_id)
+            VALUES (?, ?, ?, ?, ?, ?)
             ''',
-            (project_id, app_name, start_time, end_time, duration)
+            (project_id, app_name, start_time, end_time, duration, calendar_event_id)
         )
         self.conn.commit()
 
