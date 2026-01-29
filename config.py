@@ -9,7 +9,8 @@ CONFIG_FILE = 'tracker_settings.json'
 
 # Default settings
 DEFAULT_SETTINGS = {
-    'timezone': 'America/Los_Angeles'
+    'timezone': 'America/Los_Angeles',
+    'theme': 'default'
 }
 
 def load_settings():
@@ -36,4 +37,15 @@ def set_timezone(timezone):
     """Update timezone setting"""
     settings = load_settings()
     settings['timezone'] = timezone
+    save_settings(settings)
+
+def get_theme():
+    """Get current theme setting"""
+    settings = load_settings()
+    return settings.get('theme', 'default')
+
+def set_theme(theme):
+    """Update theme setting"""
+    settings = load_settings()
+    settings['theme'] = theme
     save_settings(settings)

@@ -46,15 +46,37 @@ class TimeTrackerGUI:
         y = (screen_height - 600) // 2 # center vertically
         self.window.geometry(f"500x600+{x}+{y}")
         
-        # Color palette
-        self.colors = {
-            'bg': '#FFE5F1',
-            'card': '#FFF0F7',
-            'accent': '#FFB6D9',
-            'text': '#8B5A7D',
-            'button_active': '#FF99C9',
-            'button_hover': '#FFD6EA'
+        # Theme definitions
+        self.themes = {
+            'default': {
+                'bg': '#1C1611',          # Deep warm brown (old library)
+                'card': '#2A2318',         # Lighter warm brown (aged paper)
+                'accent': '#D4A574',       # Warm gold/sepia
+                'text': '#E8D5B7',         # Cream/parchment text
+                'button_active': '#B8956A', # Muted gold
+                'button_hover': '#CDB38B'  # Light sepia
+            },
+            'pink': {
+                'bg': '#FFE5F1',
+                'card': '#FFF0F7',
+                'accent': '#FFB6D9',
+                'text': '#8B5A7D',
+                'button_active': '#FF99C9',
+                'button_hover': '#FFD6EA'
+            },
+            'dark': {
+                'bg': '#1E1E1E',          # Dark gray
+                'card': '#2D2D2D',         # Lighter dark
+                'accent': '#BB86FC',       # Purple
+                'text': '#E0E0E0',         # Light gray text
+                'button_active': '#8E24AA', # Dark purple
+                'button_hover': '#9C27B0'  # Purple hover
+            }
         }
+
+        # Load theme from config (default: professional)
+        current_theme = config.load_settings().get('theme', 'default')
+        self.colors = self.themes[current_theme]
         
         self.window.configure(fg_color=self.colors['bg'])
         
@@ -115,6 +137,8 @@ class TimeTrackerGUI:
             button_color=self.colors['accent'],
             button_hover_color=self.colors['button_hover'],
             dropdown_hover_color=self.colors['button_hover'],
+            fg_color=self.colors['card'], # prevent hard to read text
+            text_color=self.colors['text'], # prevent hard to read text
             font=("Arial", 14)
         )
         self.project_dropdown.pack(pady=10)
@@ -266,7 +290,7 @@ class TimeTrackerGUI:
 
         self.is_tracking = True
         self.elapsed_seconds = 0
-        self.track_button.configure(text="⏹ Stop Tracking", fg_color="#FF6B9D")
+        self.track_button.configure(text="⏹ Stop Tracking", fg_color=self.colors['button_active'])
         self.status_label.configure(text=f"Tracking: {project_name} ✨")
         self.project_dropdown.configure(state="disabled")
         
@@ -310,7 +334,10 @@ class TimeTrackerGUI:
             active_app = get_active_window_info()
             if active_app and self.tracker:
                 self.tracker.update(active_app)
-                self.window.after(0, self.app_label.configure, {"text": f"Currently: {active_app}"})
+                # lambda for .exe compatability
+                self.window.after(0, lambda app = active_app: self.app_label.configure(text=f"Currently: {app}"))
+            else:
+                self.window.after(0, lambda: self.app_label.configure(text="No app tracked"))
             time.sleep(2)
     
     def update_timer(self):
@@ -339,6 +366,11 @@ class TimeTrackerGUI:
         # Small delay to ensure window stays on top
         self.window.after(100, lambda: settings_window.window.lift())
         self.window.after(100, lambda: settings_window.window.focus_force())
+
+    # full theme change would req app restart
+    def apply_theme(self, theme_name):
+        """Apply a theme (requires restart for full effect)"""
+        self.colors = self.themes[theme_name]
     
     def run(self):
         """Run the GUI"""
@@ -471,7 +503,7 @@ class ReportWindow:
             # Get app icon
             icon_img = get_app_icon(app['app_name'], size=32)
             if not icon_img:
-                icon_img = get_default_icon(size=32)
+                icon_img = get_default_icon(size=32, color=self.colors['accent'])
             
             # Convert PIL Image to CTkImage (fixes HighDPI warning)
             ctk_image = ctk.CTkImage(
@@ -520,7 +552,7 @@ class ReportWindow:
                 corner_radius=10,
                 border_width=1,
                 border_color=self.colors['accent'],
-                fg_color="white",
+                fg_color=self.colors['card'], # use theme card colours
                 text_color=self.colors['text']
             )
             time_entry.insert(0, time_text)
@@ -716,7 +748,7 @@ class ProjectSelectionWindow:
         # Card frame
         card = ctk.CTkFrame(
             parent,
-            fg_color="white",
+            fg_color=self.colors['card'],
             corner_radius=15,
             border_width=2,
             border_color=self.colors['accent']
@@ -740,12 +772,15 @@ class ProjectSelectionWindow:
         )
         name_label.pack(anchor="w")
         
-        # Status badge
+        # NEW: Status badge colors based on theme
+        base_color = self.colors['accent']
+
+        # Generate complementary status colors from theme
         status_colors = {
-            'WIP': '#FFB6D9',
-            'Finished': '#B6FFD9',
-            'On Hold': '#FFD9B6',
-            'Waitlist': '#D9B6FF'
+            'WIP': base_color,
+            'Finished': self._adjust_color_hue(base_color, 120),   # Green-ish shift
+            'On Hold': self._adjust_color_hue(base_color, 30),     # Orange-ish shift
+            'Waitlist': self._adjust_color_hue(base_color, 270)    # Purple-ish shift
         }
         
         status_frame = ctk.CTkFrame(
@@ -839,6 +874,65 @@ class ProjectSelectionWindow:
             for widget in self.window.winfo_children():
                 widget.destroy()
             self.create_ui()
+    
+    def _adjust_color_hue(self, hex_color, hue_shift):
+        """
+        Adjust the hue of a hex color
+        
+        Args:
+            hex_color: Hex color string like '#8B7355'
+            hue_shift: Degrees to shift hue (0-360)
+        
+        Returns:
+            Adjusted hex color string
+        """
+        # Convert hex to RGB
+        hex_color = hex_color.lstrip('#')
+        r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        
+        # Convert RGB to HSV
+        r, g, b = r/255.0, g/255.0, b/255.0
+        max_c = max(r, g, b)
+        min_c = min(r, g, b)
+        diff = max_c - min_c
+        
+        if diff == 0:
+            h = 0
+        elif max_c == r:
+            h = (60 * ((g - b) / diff) + 360) % 360
+        elif max_c == g:
+            h = (60 * ((b - r) / diff) + 120) % 360
+        else:
+            h = (60 * ((r - g) / diff) + 240) % 360
+        
+        s = 0 if max_c == 0 else (diff / max_c)
+        v = max_c
+        
+        # Shift hue
+        h = (h + hue_shift) % 360
+        
+        # Convert back to RGB
+        c = v * s
+        x = c * (1 - abs(((h / 60) % 2) - 1))
+        m = v - c
+        
+        if 0 <= h < 60:
+            r, g, b = c, x, 0
+        elif 60 <= h < 120:
+            r, g, b = x, c, 0
+        elif 120 <= h < 180:
+            r, g, b = 0, c, x
+        elif 180 <= h < 240:
+            r, g, b = 0, x, c
+        elif 240 <= h < 300:
+            r, g, b = x, 0, c
+        else:
+            r, g, b = c, 0, x
+        
+        r, g, b = (r + m) * 255, (g + m) * 255, (b + m) * 255
+        
+        # Convert back to hex
+        return f'#{int(r):02x}{int(g):02x}{int(b):02x}'
 
 class SettingsWindow:
     """Settings window for configuring the app"""
@@ -849,7 +943,7 @@ class SettingsWindow:
         
         self.window = ctk.CTkToplevel()
         self.window.title("⚙️ Settings")
-        self.window.geometry("500x400")
+        self.window.geometry("500x550") # made taller to fit button
         
         # Position relative to parent
         if self.gui and self.gui.window.winfo_exists():
@@ -956,6 +1050,53 @@ class SettingsWindow:
         # Store the mapping for saving
         self.display_to_tz = {v: k for k, v in timezone_display.items()}
         
+        # NEW: Theme setting
+        theme_label = ctk.CTkLabel(
+            settings_frame,
+            text="🎨 Theme",
+            font=("Arial Rounded MT Bold", 18),
+            text_color=self.colors['text']
+        )
+        theme_label.pack(pady=(20, 10))
+
+        theme_info = ctk.CTkLabel(
+            settings_frame,
+            text="Choose your preferred color scheme",
+            font=("Arial", 12),
+            text_color=self.colors['text']
+        )
+        theme_info.pack(pady=(0, 10))
+
+        # Theme dropdown
+        themes = {
+            'default': '📖 Vintage Library',
+            'pink': '🌸 Pink Dream',
+            'dark': '🌙 Dark Mode'
+        }
+
+        current_theme = config.get_theme()
+        current_theme_display = themes[current_theme]
+
+        self.theme_var = ctk.StringVar(value=current_theme_display)
+        theme_dropdown = ctk.CTkComboBox(
+            settings_frame,
+            variable=self.theme_var,
+            values=list(themes.values()),
+            width=400,
+            height=40,
+            corner_radius=15,
+            border_width=2,
+            border_color=self.colors['accent'],
+            button_color=self.colors['accent'],
+            button_hover_color=self.colors['button_hover'],
+            dropdown_hover_color=self.colors['button_hover'],
+            font=("Arial", 14)
+        )
+        theme_dropdown.pack(pady=10)
+
+        # Store the mapping
+        self.display_to_theme = {v: k for k, v in themes.items()}
+
         # Save button
         save_btn = ctk.CTkButton(
             settings_frame,
@@ -992,14 +1133,19 @@ class SettingsWindow:
         display_name = self.timezone_var.get()
         timezone_id = self.display_to_tz.get(display_name)
         
-        if timezone_id:
+         # Get theme
+        theme_display = self.theme_var.get()
+        theme_id = self.display_to_theme.get(theme_display)
+
+        if timezone_id and theme_id:
             config.set_timezone(timezone_id)
+            config.set_theme(theme_id)
             messagebox.showinfo(
                 "Saved! ✨",
-                f"Timezone updated to {display_name}\n\nNew calendar events will use this timezone!"
+                f"Settings updated!\n\nTimezone: {display_name}\nTheme: {theme_display}\n\nRestart the app to see the new theme."
             )
         else:
-            messagebox.showerror("Error", "Invalid timezone selected")
+            messagebox.showerror("Error", "Invalid settings selected")
 
 if __name__ == "__main__":
     app = TimeTrackerGUI()

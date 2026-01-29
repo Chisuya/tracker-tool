@@ -126,7 +126,7 @@ def find_executable_path(app_name):
     return None
 
 
-def get_default_icon(size=32):
+def get_default_icon(size=32, color='#808080'):
     """
     Create a default icon when app icon can't be found
     
@@ -134,11 +134,27 @@ def get_default_icon(size=32):
     :return: PIL Image
     """
     from PIL import ImageDraw
-    
-    img = Image.new('RGBA', (size, size), (255, 182, 217, 255))
+
+    # Convert hex to RGB tuple
+    color = color.lstrip('#')
+    r, g, b = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+
+    # Create icon w/ theme colour
+    img = Image.new('RGBA', (size, size), (r, g, b, 2555))
     draw = ImageDraw.Draw(img)
     
     margin = size // 4
+
+    # Lighter fill colour (add 40 to each RGB component, max 255)
+    fill_r = min(r + 40, 255)
+    fill_g = min(g + 40, 255)
+    fill_b = min(b + 40, 255)
+    
+    # Darker outline colour (subtract 20 from each RGB component, min 0)
+    outline_r = max(r - 20, 0)
+    outline_g = max(g - 20, 0)
+    outline_b = max(b - 20, 0)
+
     draw.rectangle(
         [margin, margin, size - margin, size - margin],
         fill=(255, 255, 255, 200),
