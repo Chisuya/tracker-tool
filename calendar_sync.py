@@ -34,7 +34,7 @@ class CalendarSync:
     """Manages syncing time sessions to Google Calendar."""
     
     def __init__(self, credentials_file='credentials.json', token_file='token.pickle', 
-                 calendar_name='Art Time Tracker'):
+                 calendar_name='Time Tool'):
         """
         Initialize calendar sync.
         
